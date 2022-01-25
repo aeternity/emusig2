@@ -1,0 +1,11 @@
+{application, emusig2,
+ [{description, "Ed25519 implementation of MuSig2 in Erlang"},
+  {vsn, "1.0.0"},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env,[]},
+  {modules, [emusig2]},
+
+  {licenses, ["ISC"]},
+  {links, []}
+ ]}.
