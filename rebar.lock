@@ -9,7 +9,7 @@
   1},
  {<<"ec_utils">>,
   {git,"https://github.com/hanssv/ec_utils.git",
-       {ref,"3cee7296b2a7776ed5e8dc6a1520321878833f8d"}},
+       {ref,"e557b1c40540a5fba66647ede304179949d9e96c"}},
   0},
  {<<"enacl">>,
   {git,"https://github.com/aeternity/enacl.git",

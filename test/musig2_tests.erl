@@ -4,7 +4,10 @@
 -include_lib("eunit/include/eunit.hrl").
 
 compute_nonce() ->
-  ecu_ed25519:scalar_reduce(crypto:strong_rand_bytes(64)).
+  clamp(crypto:strong_rand_bytes(32)).
+
+clamp(<<B0:8, B1_30:30/bytes, B31:8>>) ->
+  <<(B0 band 16#f8):8, B1_30/bytes, ((B31 band 16#7f) bor 16#40):8>>.
 
 gen_user_data() ->
   SK = crypto:strong_rand_bytes(32),
@@ -36,11 +39,11 @@ musig2_3party_test() ->
 test_sign({ASK, APK, ANs, ANPs}, {BSK, BPK, BNs, BNPs}, Msg) ->
   {AggPK, _} = emusig2:aggregate_pks(APK, [BPK]),
 
-  AState1 = emusig2:sign_init(ASK, APK, AggPK, [BPK]),
-  BState1 = emusig2:sign_init(BSK, BPK, AggPK, [APK]),
+  AState1 = emusig2:sign_init(APK, AggPK, [BPK]),
+  BState1 = emusig2:sign_init(BPK, AggPK, [APK]),
 
-  {AS, AState2} = emusig2:sign_msg(AState1, Msg, ANs, [BNPs]),
-  {BS, BState2} = emusig2:sign_msg(BState1, Msg, BNs, [ANPs]),
+  {AS, AState2} = emusig2:sign_msg(AState1, ASK, Msg, ANs, [BNPs]),
+  {BS, BState2} = emusig2:sign_msg(BState1, BSK, Msg, BNs, [ANPs]),
 
   {all, AState3} = emusig2:sign_add_sig(AState2, BS),
   {all, BState3} = emusig2:sign_add_sig(BState2, AS),
@@ -55,13 +58,13 @@ test_sign({ASK, APK, ANs, ANPs}, {BSK, BPK, BNs, BNPs}, Msg) ->
 test_sign3({ASK, APK, ANs, ANPs}, {BSK, BPK, BNs, BNPs}, {CSK, CPK, CNs, CNPs}, Msg) ->
   {AggPK, _} = emusig2:aggregate_pks(APK, [BPK, CPK]),
 
-  AState1 = emusig2:sign_init(ASK, APK, AggPK, [BPK, CPK]),
-  BState1 = emusig2:sign_init(BSK, BPK, AggPK, [APK, CPK]),
-  CState1 = emusig2:sign_init(CSK, CPK, AggPK, [APK, BPK]),
+  AState1 = emusig2:sign_init(APK, AggPK, [BPK, CPK]),
+  BState1 = emusig2:sign_init(BPK, AggPK, [APK, CPK]),
+  CState1 = emusig2:sign_init(CPK, AggPK, [APK, BPK]),
 
-  {AS, AState2} = emusig2:sign_msg(AState1, Msg, ANs, [BNPs, CNPs]),
-  {BS, BState2} = emusig2:sign_msg(BState1, Msg, BNs, [ANPs, CNPs]),
-  {CS, CState2} = emusig2:sign_msg(CState1, Msg, CNs, [ANPs, BNPs]),
+  {AS, AState2} = emusig2:sign_msg(AState1, ASK, Msg, ANs, [BNPs, CNPs]),
+  {BS, BState2} = emusig2:sign_msg(BState1, BSK, Msg, BNs, [ANPs, CNPs]),
+  {CS, CState2} = emusig2:sign_msg(CState1, CSK, Msg, CNs, [ANPs, BNPs]),
 
   {incomplete, AState3} = emusig2:sign_add_sig(AState2, BS),
   {incomplete, BState3} = emusig2:sign_add_sig(BState2, AS),

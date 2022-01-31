@@ -4,20 +4,22 @@
 %%% Created     : 24 Jan 2022 by Hans Svensson
 -module(emusig2).
 
--export([sign_init/4,
-         sign_msg/4,
+-export([sign_init/2, sign_init/3,
+         sign_msg/5,
          sign_add_sig/2,
-         sign_finish/1]).
+         sign_finish/1,
+         aggregated_key/1,
+         nonce2nonce_pt/1]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
 
 -type binary_32() :: <<_:256>>.
+-type binary_64() :: <<_:512>>.
 
 -type sign_state() ::
-  #{sk     := binary_32(),
-    pk     := binary_32(),
+  #{pk     := binary_32(),
     exp    => binary_32(),
     agg_pk := binary_32(),
     n      := non_neg_integer(),
@@ -31,25 +33,31 @@
 %% Scalars are 256 bits (or really 253 bits), and little-endian represenation
 %% is used.
 
--spec sign_init(SK        :: <<_:256>>,
-                PubKey    :: <<_:256>>,
+-spec sign_init(PubKey    :: <<_:256>>,
+                OtherKeys :: [<<_:256>>]) -> sign_state().
+sign_init(PubKey, OtherKeys) ->
+  {AggPK, MyExp} = aggregate_pks(PubKey, OtherKeys),
+  #{pk => PubKey, agg_pk => AggPK, exp => MyExp, n => length(OtherKeys) + 1}.
+
+-spec sign_init(PubKey    :: <<_:256>>,
                 AggPK     :: <<_:256>>,
                 OtherKeys :: [<<_:256>>]) -> sign_state().
-sign_init(SK, PubKey, AggPK, OtherKeys) ->
+sign_init(PubKey, AggPK, OtherKeys) ->
   case aggregate_pks(PubKey, OtherKeys) of
     {AggPK, MyExp} ->
-      #{sk => SK, pk => PubKey, agg_pk => AggPK,
-        exp => MyExp, n => length(OtherKeys) + 1};
+      #{pk => PubKey, agg_pk => AggPK, exp => MyExp, n => length(OtherKeys) + 1};
     {_WrongAggPK, _} ->
       error({bad_init_data, aggregate_pk_mismatch})
   end.
 
 -spec sign_msg(SignState   :: sign_state(),
+               SK          :: binary_32(),
                Msg         :: iodata(),
                MyNonces    :: {binary_32(), binary_32()},
                OtherNonces :: [{binary_32(), binary_32()}]) -> {binary_32(), sign_state()}.
-sign_msg(SignState = #{sk := SK, agg_pk := AggPK, exp := MyExp}, Msg0, MyNonces, OtherNonces) ->
+sign_msg(SignState = #{agg_pk := AggPK, exp := MyExp}, SK, Msg0, MyNonces0, OtherNonces) ->
   Msg = iolist_to_binary(Msg0),
+  MyNonces = [ clamp(N) || N <- MyNonces0 ],
   MyNoncePts = [ sc_mul(N) || N <- MyNonces ],
 
   <<Seed0:32/bytes, _/binary>> = crypto:hash(sha512, SK),
@@ -64,7 +72,7 @@ sign_msg(SignState = #{sk := SK, agg_pk := AggPK, exp := MyExp}, Msg0, MyNonces,
   Ns = add_sc(mul_sc(Exp1, N1s), mul_sc(Exp2, N2s)),
   S  = compress(add_sc(mul_sc(Challenge, mul_sc(MyExp, Seed)), Ns)),
   {S, SignState#{my_s => S, ss => [S], agg_n => AggN, msg => Msg}};
-sign_msg(_SignState, _Msg, _MyNonces, _OtherNonces) ->
+sign_msg(_SignState, _SK, _Msg, _MyNonces, _OtherNonces) ->
   error(bad_sign_state).
 
 -spec sign_add_sig(SignState :: sign_state(),
@@ -79,10 +87,24 @@ sign_add_sig(SignState = #{ss := Ss, n := N}, S) ->
       {incomplete, SignState#{ss := NewSs}}
   end.
 
--spec sign_finish(SignState :: sign_state()) -> {binary_32(), sign_state()}.
+-spec sign_finish(SignState :: sign_state()) -> {binary_64(), sign_state()}.
 sign_finish(SignState = #{agg_n := AN, s := S}) ->
   Sig = <<AN:32/bytes, S:32/bytes>>,
   {Sig, SignState#{sig => Sig}}.
+
+-spec aggregated_key(PKs :: [binary_32()]) -> binary_32().
+aggregated_key(PKs) ->
+  SortedPKs = lists:sort(PKs),
+
+  AllPKs = << PK || PK <- SortedPKs >>,
+
+  Factors = [ sc_mul(compute_exponent(AllPKs, PK), PK) || PK <- SortedPKs ],
+
+  compress(sum_pts(Factors)).
+
+-spec nonce2nonce_pt(Nonce :: binary_32()) -> binary_32().
+nonce2nonce_pt(Nonce) ->
+  compress(sc_mul(clamp(Nonce))).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
