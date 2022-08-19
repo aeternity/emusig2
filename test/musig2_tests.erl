@@ -4,10 +4,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 compute_nonce() ->
-  clamp(crypto:strong_rand_bytes(32)).
-
-clamp(<<B0:8, B1_30:30/bytes, B31:8>>) ->
-  <<(B0 band 16#f8):8, B1_30/bytes, ((B31 band 16#7f) bor 16#40):8>>.
+  emusig2:clamp(crypto:strong_rand_bytes(32)).
 
 gen_user_data() ->
   SK = crypto:strong_rand_bytes(32),
