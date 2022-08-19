@@ -19,14 +19,16 @@
 -type binary_64() :: <<_:512>>.
 
 -type sign_state() ::
-  #{pk     := binary_32(),
+  #{pk     => binary_32(),
     exp    => binary_32(),
-    agg_pk := binary_32(),
-    n      := non_neg_integer(),
+    agg_pk => binary_32(),
+    n      => non_neg_integer(),
     my_s   => binary_32(),
     agg_n  => binary_32(),
     s      => binary_32(),
-    ss     => [binary_32()]}.
+    ss     => [binary_32()],
+    sig    => binary_64(),
+    msg    => binary()}.
 
 %% Ed255129 points are represented by their Y-coordinates and a single (the
 %% highest one!) bit for sign of X.
@@ -52,18 +54,17 @@ sign_init(PubKey, AggPK, OtherKeys) ->
 
 -spec sign_msg(SignState   :: sign_state(),
                SK          :: binary_32(),
-               Msg         :: iodata(),
-               MyNonces    :: {binary_32(), binary_32()},
-               OtherNonces :: [{binary_32(), binary_32()}]) -> {binary_32(), sign_state()}.
-sign_msg(SignState = #{agg_pk := AggPK, exp := MyExp}, SK, Msg0, MyNonces0, OtherNonces) ->
-  Msg = iolist_to_binary(Msg0),
+               Msg         :: binary(),
+               MyNonces    :: [binary_32()],
+               OtherNonces :: [[binary_32()]]) -> {binary_32(), sign_state()}.
+sign_msg(SignState = #{agg_pk := AggPK, exp := MyExp}, SK = <<_:256>>, Msg, MyNonces0, OtherNonces) ->
   MyNonces = [ clamp(N) || N <- MyNonces0 ],
   MyNoncePts = [ sc_mul(N) || N <- MyNonces ],
 
   <<Seed0:32/bytes, _/binary>> = crypto:hash(sha512, SK),
   Seed = clamp(Seed0),
 
-  AccNonces = accumulate_nonces([MyNoncePts | maybe_decode(OtherNonces)]),
+  AccNonces = accumulate_nonces([MyNoncePts | OtherNonces]),
   {AggN, [Exp1, Exp2]} = aggregate_nonces(AggPK, AccNonces, Msg),
 
   Challenge = hash_to_scalar(<<AggN/binary, AggPK/binary, Msg/binary>>),
@@ -157,15 +158,6 @@ compute_exponent(AllPKs, PK) ->
 
 hash_to_scalar(Binary) ->
   ecu_ed25519:scalar_reduce(crypto:hash(sha512, Binary)).
-
-maybe_decode(Xs) when is_list(Xs) -> [maybe_decode(X) || X <- Xs];
-maybe_decode(X) when is_binary(X) ->
-  try aeser_api_encoder:decode(X) of
-    {_, Bin} -> Bin;
-    _        -> X
-  catch _:_ ->
-          X
-  end.
 
 %% Clamp a 32-byte little-endian value - i.e clear the lowest three bits of
 %% the first byte and clear the highest and set the second highest of the
