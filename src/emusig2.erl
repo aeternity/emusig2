@@ -109,13 +109,6 @@ nonce2nonce_pt(Nonce) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% p_add(A, B)  -> enacl:crypto_ed25519_add(A, B).
-%% sc_mul(S)    -> enacl:crypto_ed25519_scalarmult_base_noclamp(S).
-%% sc_mul(S, P) -> enacl:crypto_ed25519_scalarmult_noclamp(S, P).
-%% mul_sc(A, B) -> enacl:crypto_ed25519_scalar_mul(A, B).
-%% add_sc(A, B) -> enacl:crypto_ed25519_scalar_add(A, B).
-%% compress(P)  -> P.
-
 p_add(A, B)  -> ecu_ed25519:p_add(A, B).
 sc_mul(P)    -> ecu_ed25519:scalar_mul_base_noclamp(P).
 sc_mul(S, P) -> ecu_ed25519:scalar_mul_noclamp(S, P).
